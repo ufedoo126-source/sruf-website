@@ -1,0 +1,23 @@
+export default function Hero({ onExplore }: { onExplore: () => void }) {
+  return (
+    <section
+      className="relative flex min-h-[85vh] items-end bg-cover bg-center"
+      style={{ backgroundImage: "url(/background.jpeg)" }}
+    >
+      <div className="absolute inset-0 bg-gradient-to-t from-[#07090f] via-[#07090f]/50 to-[#07090f]/30" />
+      <div className="relative mx-auto w-full max-w-7xl px-4 pb-16 md:px-8 md:pb-24">
+        <span className="mb-5 inline-block border border-white/40 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.25em] backdrop-blur">
+          Becoming Collection 2026
+        </span>
+        <h1 className="font-display text-[22vw] leading-[0.85] md:text-[11rem]">
+          WEAR THE
+          <br />
+          VIBE.
+        </h1>
+        <button onClick={onExplore} className="btn-primary mt-8">
+          Explore Collection
+        </button>
+      </div>
+    </section>
+  );
+}
