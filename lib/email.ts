@@ -112,14 +112,21 @@ export async function sendOrderEmails(order: OrderForEmail): Promise<void> {
   `);
 
   const jobs: Promise<void>[] = [];
+
   if (order.customer_email) {
     jobs.push(send(order.customer_email, `Your SRUF order ${order.paystack_reference}`, customerHtml));
   }
-  const adminTo = process.env.ADMIN_NOTIFY_EMAIL;
-  if (adminTo) {
+
+  // ADMIN_NOTIFY_EMAIL can hold one address, or several separated by commas
+  const adminList = (process.env.ADMIN_NOTIFY_EMAIL ?? "")
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean);
+  for (const adminTo of adminList) {
     jobs.push(
       send(adminTo, `New order ${order.paystack_reference}: ${total}`, adminHtml, order.customer_email ?? undefined)
     );
   }
+
   await Promise.all(jobs);
 }
