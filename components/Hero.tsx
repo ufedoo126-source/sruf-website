@@ -2,7 +2,7 @@ export default function Hero({ onExplore }: { onExplore: () => void }) {
   return (
     <section
       className="relative flex min-h-[85vh] items-end bg-cover bg-center"
-      style={{ backgroundImage: "url(/background.jpeg)" }}
+      style={{ backgroundImage: "url(/background.jpeg)", color: "#fff" }}
     >
       <div className="absolute inset-0 bg-gradient-to-t from-[#07090f] via-[#07090f]/50 to-[#07090f]/30" />
       <div className="relative mx-auto w-full max-w-7xl px-4 pb-16 md:px-8 md:pb-24">

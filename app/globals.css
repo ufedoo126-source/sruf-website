@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: dark;
   --bg: #07090f;
   --surface: #0e1320;
   --surface-2: #151d31;
@@ -9,6 +10,20 @@
   --muted: #9aa3b5;
   --brand-blue: #27479e;
   --brand-blue-light: #8ea6e6;
+  --header-bg: rgba(7, 9, 15, 0.85);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f6fa;
+  --surface: #ffffff;
+  --surface-2: #eceff6;
+  --line: rgba(10, 16, 32, 0.14);
+  --text: #0b1020;
+  --muted: #566074;
+  --brand-blue: #27479e;
+  --brand-blue-light: #27479e;
+  --header-bg: rgba(245, 246, 250, 0.88);
 }
 
 html {
@@ -20,6 +35,7 @@ body {
   color: var(--text);
   font-family: var(--font-body), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.25s, color 0.25s;
 }
 
 .font-display {
@@ -29,10 +45,24 @@ body {
 
 .bg-surface { background: var(--surface); }
 .bg-surface-2 { background: var(--surface-2); }
-.bg-brand { background: var(--brand-blue); }
+.bg-brand { background: var(--brand-blue); color: #fff; }
 .text-muted { color: var(--muted); }
 .text-brand-light { color: var(--brand-blue-light); }
 .border-line { border-color: var(--line); }
+.site-header { background: var(--header-bg); }
+
+/* Logo: show the right version for the current theme */
+[data-theme="light"] .logo-on-dark { display: none; }
+:root:not([data-theme="light"]) .logo-on-light { display: none; }
+
+/* Light mode: the site was written with white-on-dark utility classes.
+   These rules flip them to dark-on-light. Text on blue stays white. */
+[data-theme="light"] .text-white:not(.bg-brand) { color: var(--text); }
+[data-theme="light"] .hover\:text-white:hover { color: var(--text); }
+[data-theme="light"] .hover\:border-white:hover { border-color: var(--text); }
+[data-theme="light"] .focus\:border-white:focus { border-color: var(--text); }
+[data-theme="light"] .text-white\/5 { color: rgba(10, 16, 32, 0.06); }
+[data-theme="light"] .text-white\/10 { color: rgba(10, 16, 32, 0.08); }
 
 .btn-primary {
   display: inline-flex;
