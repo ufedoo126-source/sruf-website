@@ -1,4 +1,5 @@
 import { formatPrice } from "@/lib/format";
+import { coverImage } from "@/lib/product";
 import type { CartLine, Currency } from "@/lib/types";
 
 type Props = {
@@ -37,33 +38,35 @@ export default function CartDrawer({ open, onClose, lines, currency, totalNGN, o
             <p className="text-muted">Your bag is empty.</p>
           ) : (
             <ul className="flex flex-col gap-5">
-              {lines.map(({ key, product, size, qty }) => (
-                <li key={key} className="flex gap-4">
-                  <div className="flex h-24 w-20 shrink-0 items-center justify-center overflow-hidden bg-surface-2">
-                    {product.image_urls[0] ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={product.image_urls[0]} alt={product.name} className="h-full w-full object-cover" />
-                    ) : (
-                      <span className="font-display text-2xl text-white/10">SRUF</span>
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold">{product.name}</p>
-                    <p className="text-muted text-sm">
-                      Size: {size} · {formatPrice(product.price_ngn, currency)}
-                    </p>
-                    <div className="mt-3 inline-flex items-center border border-line">
-                      <button onClick={() => onChange(key, -1)} className="px-3 py-1" aria-label="Decrease">
-                        −
-                      </button>
-                      <span className="min-w-6 text-center text-sm">{qty}</span>
-                      <button onClick={() => onChange(key, 1)} className="px-3 py-1" aria-label="Increase">
-                        +
-                      </button>
+              {lines.map(({ key, product, size, color, qty }) => {
+                const img = coverImage(product, color);
+                return (
+                  <li key={key} className="flex gap-4">
+                    <div className="flex h-24 w-20 shrink-0 items-center justify-center overflow-hidden bg-surface-2">
+                      {img ? (
+                        <img src={img} alt={product.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="font-display text-2xl text-white/10">SRUF</span>
+                      )}
                     </div>
-                  </div>
-                </li>
-              ))}
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold">{product.name}</p>
+                      <p className="text-muted text-sm">
+                        {color ? `${color} · ` : ""}Size: {size} · {formatPrice(product.price_ngn, currency)}
+                      </p>
+                      <div className="mt-3 inline-flex items-center border border-line">
+                        <button onClick={() => onChange(key, -1)} className="px-3 py-1" aria-label="Decrease">
+                          −
+                        </button>
+                        <span className="min-w-6 text-center text-sm">{qty}</span>
+                        <button onClick={() => onChange(key, 1)} className="px-3 py-1" aria-label="Increase">
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

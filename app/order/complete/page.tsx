@@ -7,7 +7,7 @@ import ClearCart from "@/components/ClearCart";
 
 export const dynamic = "force-dynamic";
 
-type OrderItem = { name: string; size: string; qty: number; price_ngn: number };
+type OrderItem = { name: string; size: string; color?: string | null; qty: number; price_ngn: number };
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
@@ -117,7 +117,7 @@ export default async function OrderComplete({
         {items.map((it, i) => (
           <li key={i} className="flex justify-between gap-4 border-b border-line p-4 text-sm last:border-b-0">
             <span>
-              {it.name} · {it.size} × {it.qty}
+              {it.name} · {it.size}{it.color ? ` · ${it.color}` : ""} × {it.qty}
             </span>
             <span>{formatPrice(it.price_ngn * it.qty, "NGN")}</span>
           </li>

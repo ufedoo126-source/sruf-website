@@ -46,7 +46,7 @@ export default function MenuDrawer({ open, categories, onClose, onSelect }: Prop
             </button>
           ))}
           <a
-            href="#about"
+            href="/#about"
             onClick={onClose}
             className="font-display border-b border-line py-4 text-3xl transition hover:text-brand-light"
           >

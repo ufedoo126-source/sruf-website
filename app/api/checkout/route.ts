@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 type Incoming = {
-  items?: { productId?: string; size?: string; qty?: number }[];
+  items?: { productId?: string; size?: string; color?: string | null; qty?: number }[];
   name?: string;
   phone?: string;
   email?: string;
@@ -11,6 +11,7 @@ type Incoming = {
   city?: string;
   country?: string;
   note?: string;
+  acceptedTerms?: boolean;
 };
 
 const bad = (error: string, status = 400) => NextResponse.json({ error }, { status });
@@ -35,6 +36,7 @@ export async function POST(req: Request) {
   if (phone.replace(/\D/g, "").length < 7) return bad("Please enter a valid phone number.");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return bad("Please enter a valid email address.");
   if (!fulfilment) return bad("Choose delivery or pickup.");
+  if (body.acceptedTerms !== true) return bad("Please accept our policies before paying.");
 
   let deliveryAddress: string | null = null;
   if (fulfilment === "delivery") {
@@ -55,17 +57,18 @@ export async function POST(req: Request) {
       typeof i.size !== "string" ||
       !Number.isInteger(i.qty) ||
       (i.qty as number) < 1 ||
-      (i.qty as number) > 20
+      (i.qty as number) > 20 ||
+      (i.color !== undefined && i.color !== null && typeof i.color !== "string")
     ) {
       return bad("Something is wrong with your bag. Please refresh and try again.");
     }
   }
 
-  // 3. Look up REAL prices from the database (never trust prices from the browser)
+  // 3. Look up REAL prices, sizes and colours from the database (never trust the browser)
   const ids = [...new Set(items.map((i) => i.productId as string))];
   const { data: prods, error: prodErr } = await supabaseAdmin
     .from("products")
-    .select("id, name, price_ngn, sizes, active")
+    .select("id, name, price_ngn, sizes, colors, active")
     .in("id", ids);
 
   if (prodErr || !prods) return bad("Could not check your items. Please try again.", 500);
@@ -77,18 +80,30 @@ export async function POST(req: Request) {
     if (!p || !p.active || !p.sizes.includes(i.size as string)) {
       return bad("Some items in your bag are no longer available. Please remove them and try again.");
     }
+
+    const colors = (p.colors ?? []) as { name: string }[];
+    const chosen = typeof i.color === "string" && i.color.trim() ? i.color.trim() : null;
+    if (colors.length > 0) {
+      if (!chosen || !colors.some((c) => c.name === chosen)) {
+        return bad(`Please choose a colour for ${p.name}.`);
+      }
+    } else if (chosen) {
+      return bad("Some items in your bag are no longer available. Please remove them and try again.");
+    }
+
     const price = Number(p.price_ngn);
     subtotal += price * (i.qty as number);
     lines.push({
       product_id: p.id,
       name: p.name,
       size: i.size,
+      color: chosen,
       qty: i.qty,
       price_ngn: price,
     });
   }
 
-  // 4. Save the order as "pending payment"
+  // 4. Save the order as "pending payment", with the time the policies were accepted
   const reference = `SRUF-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
 
   const { error: insErr } = await supabaseAdmin.from("orders").insert({
@@ -102,6 +117,7 @@ export async function POST(req: Request) {
     subtotal_ngn: subtotal,
     status: "pending_payment",
     paystack_reference: reference,
+    terms_accepted_at: new Date().toISOString(),
   });
   if (insErr) return bad("Could not save your order. Please try again.", 500);
 

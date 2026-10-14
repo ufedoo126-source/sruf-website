@@ -36,7 +36,7 @@ export default function CheckoutForm({ lines, currency, totalNGN, onClose }: Pro
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          items: lines.map((l) => ({ productId: l.product.id, size: l.size, qty: l.qty })),
+          items: lines.map((l) => ({ productId: l.product.id, size: l.size, color: l.color, qty: l.qty })),
           name,
           phone,
           email,
@@ -70,7 +70,7 @@ export default function CheckoutForm({ lines, currency, totalNGN, onClose }: Pro
           {lines.map((l) => (
             <li key={l.key} className="flex justify-between gap-4 border-b border-line p-3">
               <span>
-                {l.product.name} · {l.size} × {l.qty}
+                {l.product.name} · {l.size}{l.color ? ` · ${l.color}` : ""} × {l.qty}
               </span>
               <span>{formatPrice(l.product.price_ngn * l.qty, currency)}</span>
             </li>

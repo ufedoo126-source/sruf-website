@@ -21,7 +21,7 @@ export default function Header({ count, onMenu, onCart }: Props) {
           <span className="block h-[2px] w-5 bg-current" />
         </button>
 
-        <a href="#top" aria-label="SRUF home" className="justify-self-center">
+        <a href="/" aria-label="SRUF home" className="justify-self-center">
           <Logo className="h-9" />
         </a>
 

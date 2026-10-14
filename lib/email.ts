@@ -1,7 +1,7 @@
 import { formatPrice } from "./format";
 import { store } from "./store";
 
-type OrderItem = { name: string; size: string; qty: number; price_ngn: number };
+type OrderItem = { name: string; size: string; color?: string | null; qty: number; price_ngn: number };
 
 export type OrderForEmail = {
   paystack_reference: string;
@@ -50,7 +50,9 @@ function itemRows(items: OrderItem[]): string {
     .map(
       (it) => `
       <tr>
-        <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">${esc(it.name)}<br><span style="color:#6b7280;font-size:13px;">Size ${esc(it.size)} × ${it.qty}</span></td>
+        <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">${esc(it.name)}<br><span style="color:#6b7280;font-size:13px;">${
+          it.color ? `${esc(it.color)} · ` : ""
+        }Size ${esc(it.size)} × ${it.qty}</span></td>
         <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;text-align:right;">${formatPrice(it.price_ngn * it.qty, "NGN")}</td>
       </tr>`
     )
