@@ -14,7 +14,7 @@ const body = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "SRUF — Wear the Vibe",
+  title: "SRUF — Resilience in Style",
   description: "SRUF streetwear. Becoming Collection 2026.",
 };
 
