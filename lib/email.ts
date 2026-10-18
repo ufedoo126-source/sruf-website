@@ -115,8 +115,16 @@ export async function sendOrderEmails(order: OrderForEmail): Promise<void> {
 
   const jobs: Promise<void>[] = [];
 
+  // Customer receipt. Replies go to REPLY_TO_EMAIL (her real inbox) if it is set.
   if (order.customer_email) {
-    jobs.push(send(order.customer_email, `Your SRUF order ${order.paystack_reference}`, customerHtml));
+    jobs.push(
+      send(
+        order.customer_email,
+        `Your SRUF order ${order.paystack_reference}`,
+        customerHtml,
+        process.env.REPLY_TO_EMAIL || undefined
+      )
+    );
   }
 
   // ADMIN_NOTIFY_EMAIL can hold one address, or several separated by commas
