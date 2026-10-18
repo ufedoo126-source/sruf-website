@@ -1,33 +1,467 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { normalizeProduct } from "@/lib/product";
-import StoreShell from "@/components/StoreShell";
-import HomeContent from "@/components/HomeContent";
-import type { Category, Product } from "@/lib/types";
+import { SIZE_OPTIONS, resizeImage, slugify } from "@/lib/admin";
+import { formatPrice } from "@/lib/format";
+import type { Category, Product, ProductColor } from "@/lib/types";
 
-// Always fetch fresh data, so admin changes show up straight away.
-export const dynamic = "force-dynamic";
+const inputClass = "w-full border border-line bg-surface-2 px-3 py-2 text-sm outline-none focus:border-white";
+const labelClass = "text-muted mb-1 block text-[11px] font-semibold uppercase tracking-[0.2em]";
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ cat?: string }> }) {
-  const sp = await searchParams;
+// Shrinks each photo, uploads it, and returns the public links.
+async function uploadPhotos(files: FileList | File[]): Promise<string[]> {
+  const urls: string[] = [];
+  for (const file of Array.from(files)) {
+    const blob = await resizeImage(file);
+    const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+    const { error: upErr } = await supabase.storage
+      .from("product-images")
+      .upload(path, blob, { contentType: "image/jpeg" });
+    if (upErr) throw upErr;
+    const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+    urls.push(data.publicUrl);
+  }
+  return urls;
+}
 
-  const [catRes, prodRes] = await Promise.all([
-    supabase.from("categories").select("*").order("sort_order").order("name"),
-    supabase
-      .from("products")
-      .select("*")
-      .eq("active", true)
-      .order("sort_order")
-      .order("created_at", { ascending: false }),
-  ]);
+function ProductForm({
+  product,
+  categories,
+  onSaved,
+  onCancel,
+}: {
+  product: Product | null;
+  categories: Category[];
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(product?.name ?? "");
+  const [categoryId, setCategoryId] = useState(product?.category_id ?? "");
+  const [price, setPrice] = useState(product ? String(product.price_ngn) : "");
+  const [tag, setTag] = useState(product?.tag ?? "");
+  const [description, setDescription] = useState(product?.description ?? "");
+  const [details, setDetails] = useState((product?.details ?? []).join("\n"));
+  const [sizes, setSizes] = useState<string[]>(product?.sizes ?? ["S", "M", "L", "XL", "XXL"]);
+  const [images, setImages] = useState<string[]>(product?.image_urls ?? []);
+  const [colors, setColors] = useState<ProductColor[]>(product?.colors ?? []);
+  const [active, setActive] = useState(product?.active ?? true);
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  const categories = (catRes.data ?? []) as Category[];
-  const products = ((prodRes.data ?? []) as Product[]).map(normalizeProduct);
+  function toggleSize(s: string) {
+    setSizes((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+  }
 
-  const initialFilter = sp.cat && categories.some((c) => c.id === sp.cat) ? sp.cat : "all";
+  async function onFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    setError("");
+    try {
+      const urls = await uploadPhotos(files);
+      setImages((prev) => [...prev, ...urls]);
+    } catch (err) {
+      setError("Upload failed: " + (err instanceof Error ? err.message : "unknown error"));
+    }
+    setUploading(false);
+  }
+
+  function makeMain(url: string) {
+    setImages((prev) => [url, ...prev.filter((u) => u !== url)]);
+  }
+
+  // ----- colours -----
+  function addColor() {
+    setColors((prev) => [...prev, { name: "", hex: "#000000", images: [] }]);
+  }
+
+  function updateColor(i: number, patch: Partial<ProductColor>) {
+    setColors((prev) => prev.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
+  }
+
+  function removeColor(i: number) {
+    setColors((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  async function onColorFiles(i: number, files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    setError("");
+    try {
+      const urls = await uploadPhotos(files);
+      setColors((prev) => prev.map((c, idx) => (idx === i ? { ...c, images: [...c.images, ...urls] } : c)));
+    } catch (err) {
+      setError("Upload failed: " + (err instanceof Error ? err.message : "unknown error"));
+    }
+    setUploading(false);
+  }
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+
+    if (!name.trim()) return setError("Enter a product name.");
+    if (price === "" || Number(price) < 0) return setError("Enter a valid price in naira.");
+    if (sizes.length === 0) return setError("Pick at least one size (or One Size).");
+
+    const cleanedColors = colors
+      .map((c) => ({ ...c, name: c.name.trim() }))
+      .filter((c) => c.name || c.images.length > 0);
+    if (cleanedColors.some((c) => !c.name)) return setError("Give every colour a name, or remove it.");
+    const lowered = cleanedColors.map((c) => c.name.toLowerCase());
+    if (new Set(lowered).size !== lowered.length) return setError("Two colours have the same name.");
+
+    const detailLines = details
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+    setSaving(true);
+    const payload = {
+      name: name.trim(),
+      category_id: categoryId || null,
+      price_ngn: Number(price),
+      tag: tag.trim() || null,
+      description: description.trim() || null,
+      details: detailLines,
+      sizes: SIZE_OPTIONS.filter((s) => sizes.includes(s)),
+      image_urls: images,
+      colors: cleanedColors,
+      active,
+    };
+
+    const { error: dbErr } = product
+      ? await supabase.from("products").update(payload).eq("id", product.id)
+      : await supabase.from("products").insert({
+          ...payload,
+          slug: slugify(name) + "-" + Math.random().toString(36).slice(2, 6),
+        });
+
+    setSaving(false);
+    if (dbErr) return setError(dbErr.message);
+    onSaved();
+  }
 
   return (
-    <StoreShell categories={categories} initialFilter={initialFilter}>
-      <HomeContent categories={categories} products={products} />
-    </StoreShell>
+    <form onSubmit={save} className="mb-10 border border-line bg-surface p-6">
+      <h2 className="font-display mb-6 text-3xl">{product ? "Edit product" : "New product"}</h2>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div>
+          <label className={labelClass}>Name</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass}>Category</label>
+          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputClass}>
+            <option value="">No category</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>Price (₦)</label>
+          <input
+            type="number"
+            min="0"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            className={inputClass}
+          />
+        </div>
+        <div>
+          <label className={labelClass}>Tag (optional, e.g. New, Sold out)</label>
+          <input value={tag} onChange={(e) => setTag(e.target.value)} className={inputClass} />
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <label className={labelClass}>Write-up (what customers read about this piece)</label>
+        <textarea
+          rows={8}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Tell the story of the piece: the look, the feel, how to wear it. Leave a blank line between paragraphs."
+          className={inputClass}
+        />
+      </div>
+
+      <div className="mt-4">
+        <label className={labelClass}>Details (one per line)</label>
+        <textarea
+          rows={5}
+          value={details}
+          onChange={(e) => setDetails(e.target.value)}
+          placeholder={"Material: 100% cotton\nFit: Relaxed\nCare: Wash cold, do not tumble dry"}
+          className={inputClass}
+        />
+        <p className="text-muted mt-1 text-xs">
+          Write each detail on its own line. Text before a colon shows as a bold label on the product page.
+        </p>
+      </div>
+
+      <div className="mt-6">
+        <label className={labelClass}>Available sizes</label>
+        <div className="flex flex-wrap gap-2">
+          {SIZE_OPTIONS.map((s) => (
+            <button
+              type="button"
+              key={s}
+              onClick={() => toggleSize(s)}
+              className={`px-4 py-2 text-sm font-semibold ${
+                sizes.includes(s) ? "bg-brand text-white" : "border border-line text-muted"
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+        <p className="text-muted mt-2 text-xs">For caps or bags, pick only “One Size”.</p>
+      </div>
+
+      <div className="mt-6">
+        <label className={labelClass}>Main photos (the first one is the cover photo in the shop)</label>
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(e) => onFiles(e.target.files)}
+          className="text-muted text-sm"
+        />
+        {images.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-3">
+            {images.map((url, i) => (
+              <div key={url} className="w-24">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={url} alt="" className="aspect-[4/5] w-24 object-cover" />
+                <div className="mt-1 flex justify-between text-[11px]">
+                  {i === 0 ? (
+                    <span className="text-brand-light">Main</span>
+                  ) : (
+                    <button type="button" onClick={() => makeMain(url)} className="text-muted hover:text-white">
+                      Make main
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setImages((prev) => prev.filter((u) => u !== url))}
+                    className="text-muted hover:text-white"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-6">
+        <label className={labelClass}>Colours (optional)</label>
+        <p className="text-muted mb-3 text-xs">
+          Add one row for each colour this design comes in, with that colour’s own photos. Leave empty if the product
+          comes in one colour only.
+        </p>
+
+        <div className="flex flex-col gap-3">
+          {colors.map((c, i) => (
+            <div key={i} className="border border-line p-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <input
+                  type="color"
+                  value={c.hex}
+                  onChange={(e) => updateColor(i, { hex: e.target.value })}
+                  aria-label="Swatch colour"
+                  className="h-10 w-12 cursor-pointer border border-line bg-surface-2 p-1"
+                />
+                <input
+                  value={c.name}
+                  onChange={(e) => updateColor(i, { name: e.target.value })}
+                  placeholder="Colour name (e.g. Black)"
+                  className={`${inputClass} max-w-xs`}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeColor(i)}
+                  className="text-muted text-xs uppercase tracking-[0.18em] hover:text-white"
+                >
+                  Remove colour
+                </button>
+              </div>
+
+              <div className="mt-3">
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => onColorFiles(i, e.target.files)}
+                  className="text-muted text-sm"
+                />
+                {c.images.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    {c.images.map((url) => (
+                      <div key={url} className="w-20">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="" className="aspect-[4/5] w-20 object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => updateColor(i, { images: c.images.filter((u) => u !== url) })}
+                          className="text-muted mt-1 text-[11px] hover:text-white"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <button type="button" onClick={addColor} className="btn-outline btn-sm mt-3">
+          + Add colour
+        </button>
+        {uploading && <p className="text-muted mt-2 text-sm">Uploading…</p>}
+      </div>
+
+      <label className="mt-6 flex items-center gap-3 text-sm">
+        <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+        Show this product on the shop
+      </label>
+
+      {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
+
+      <div className="mt-6 flex gap-3">
+        <button type="submit" disabled={saving || uploading} className="btn-primary">
+          {saving ? "Saving…" : "Save product"}
+        </button>
+        <button type="button" onClick={onCancel} className="btn-outline">
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+export default function ProductsAdmin() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState("");
+  const [editing, setEditing] = useState<Product | "new" | null>(null);
+
+  async function load() {
+    const [p, c] = await Promise.all([
+      supabase.from("products").select("*").order("created_at", { ascending: false }),
+      supabase.from("categories").select("*").order("sort_order").order("name"),
+    ]);
+    if (p.error) setMsg(p.error.message);
+    setProducts(
+      ((p.data ?? []) as Product[]).map((x) => ({
+        ...x,
+        price_ngn: Number(x.price_ngn),
+        colors: x.colors ?? [],
+        details: x.details ?? [],
+      }))
+    );
+    setCategories((c.data ?? []) as Category[]);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function toggleActive(p: Product) {
+    const { error } = await supabase.from("products").update({ active: !p.active }).eq("id", p.id);
+    if (error) setMsg(error.message);
+    load();
+  }
+
+  async function remove(p: Product) {
+    if (!window.confirm(`Delete "${p.name}" for good?`)) return;
+    const { error } = await supabase.from("products").delete().eq("id", p.id);
+    if (error) setMsg(error.message);
+    load();
+  }
+
+  const categoryName = (id: string | null) => categories.find((c) => c.id === id)?.name ?? "No category";
+
+  return (
+    <div>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="font-display text-5xl">Products</h1>
+        {!editing && (
+          <button onClick={() => setEditing("new")} className="btn-primary">
+            + New product
+          </button>
+        )}
+      </div>
+
+      {msg && <p className="mb-4 text-sm text-red-400">{msg}</p>}
+
+      {editing && (
+        <ProductForm
+          key={editing === "new" ? "new" : editing.id}
+          product={editing === "new" ? null : editing}
+          categories={categories}
+          onCancel={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            load();
+          }}
+        />
+      )}
+
+      {loading ? (
+        <p className="text-muted">Loading…</p>
+      ) : products.length === 0 ? (
+        <p className="text-muted">No products yet. Click “New product”.</p>
+      ) : (
+        <ul className="border border-line">
+          {products.map((p) => (
+            <li
+              key={p.id}
+              className="flex flex-wrap items-center gap-4 border-b border-line p-4 last:border-b-0"
+            >
+              <div className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden bg-surface-2">
+                {p.image_urls[0] || p.colors[0]?.images[0] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={p.image_urls[0] || p.colors[0].images[0]} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="font-display text-xl text-white/10">SRUF</span>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold">
+                  {p.name}
+                  {!p.active && <span className="text-muted ml-2 text-xs uppercase">Hidden</span>}
+                </p>
+                <p className="text-muted text-sm">
+                  {categoryName(p.category_id)} · {formatPrice(p.price_ngn, "NGN")} · {p.sizes.join(", ")}
+                  {p.colors.length > 0 && ` · ${p.colors.length} colour${p.colors.length > 1 ? "s" : ""}`}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setEditing(p)} className="btn-outline btn-sm">
+                  Edit
+                </button>
+                <button onClick={() => toggleActive(p)} className="btn-outline btn-sm">
+                  {p.active ? "Hide" : "Show"}
+                </button>
+                <button onClick={() => remove(p)} className="btn-outline btn-sm">
+                  Delete
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
