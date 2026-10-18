@@ -17,15 +17,22 @@ export default function ProductView({ product, category, related }: Props) {
   const { currency, addToCart } = useStore();
 
   const hasColors = product.colors.length > 0;
-  const [colorIdx, setColorIdx] = useState(0);
+  // With one colour it is chosen automatically. With several, the customer must pick.
+  const [colorIdx, setColorIdx] = useState<number | null>(product.colors.length === 1 ? 0 : null);
   const [size, setSize] = useState(product.sizes.length === 1 ? product.sizes[0] : "");
   const [qty, setQty] = useState(1);
   const [imgIdx, setImgIdx] = useState(0);
 
-  const color = hasColors ? product.colors[colorIdx] : null;
-  // Show the chosen colour's photos, or the main photos if that colour has none
-  const gallery = color && color.images.length > 0 ? color.images : product.image_urls;
+  const color = colorIdx !== null ? product.colors[colorIdx] : null;
+  const mainPhotos = product.image_urls.length > 0 ? product.image_urls : product.colors[0]?.images ?? [];
+  // Show the chosen colour's photos, or the main photos if no colour is chosen (or it has none)
+  const gallery = color && color.images.length > 0 ? color.images : mainPhotos;
   const current = gallery[imgIdx] ?? gallery[0] ?? null;
+
+  function selectColor(i: number | null) {
+    setColorIdx(i);
+    setImgIdx(0);
+  }
 
   const paragraphs = (product.description ?? "")
     .split(/\n\s*\n/)
@@ -33,12 +40,21 @@ export default function ProductView({ product, category, related }: Props) {
     .filter(Boolean);
 
   const soldOut = isSoldOut(product);
-  const canAdd = !soldOut && size !== "";
+  const needsColor = hasColors && color === null;
+  const canAdd = !soldOut && size !== "" && !needsColor;
 
   function add() {
     if (!canAdd) return;
     addToCart(product, size, color ? color.name : null, qty);
   }
+
+  const buttonLabel = soldOut
+    ? "Sold out"
+    : needsColor
+    ? "Choose a colour"
+    : !size
+    ? "Choose a size"
+    : `Add to bag — ${formatPrice(product.price_ngn * qty, currency)}`;
 
   const labelClass = "text-muted mb-2 block text-[11px] font-semibold uppercase tracking-[0.2em]";
 
@@ -93,16 +109,30 @@ export default function ProductView({ product, category, related }: Props) {
 
           {hasColors && (
             <div className="mt-8">
-              <span className={labelClass}>Colour: {color?.name}</span>
-              <div className="flex flex-wrap gap-3">
+              <label htmlFor="colour" className={labelClass}>
+                Colour{color ? `: ${color.name}` : ""}
+              </label>
+              <select
+                id="colour"
+                value={colorIdx === null ? "" : String(colorIdx)}
+                onChange={(e) => selectColor(e.target.value === "" ? null : Number(e.target.value))}
+                className="w-full border border-line bg-surface-2 px-4 py-3 text-sm outline-none focus:border-[var(--text)]"
+              >
+                <option value="">Choose a colour</option>
+                {product.colors.map((c, i) => (
+                  <option key={c.name} value={String(i)}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+
+              {/* Swatches: a visual shortcut that stays in sync with the dropdown */}
+              <div className="mt-3 flex flex-wrap gap-3">
                 {product.colors.map((c, i) => (
                   <button
                     key={c.name}
                     type="button"
-                    onClick={() => {
-                      setColorIdx(i);
-                      setImgIdx(0);
-                    }}
+                    onClick={() => selectColor(i)}
                     aria-label={c.name}
                     title={c.name}
                     className={`h-9 w-9 rounded-full border-2 transition ${
@@ -147,11 +177,7 @@ export default function ProductView({ product, category, related }: Props) {
           </div>
 
           <button onClick={add} disabled={!canAdd} className="btn-primary mt-8 w-full">
-            {soldOut
-              ? "Sold out"
-              : size
-              ? `Add to bag — ${formatPrice(product.price_ngn * qty, currency)}`
-              : "Choose a size"}
+            {buttonLabel}
           </button>
 
           <p className="text-muted mt-3 text-xs">

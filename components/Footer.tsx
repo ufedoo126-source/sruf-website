@@ -2,6 +2,9 @@ import Link from "next/link";
 import Logo from "@/components/Logo";
 import SocialIcons from "@/components/SocialIcons";
 
+// The year the brand started. Change this one number if needed.
+const BRAND_START_YEAR = 2021;
+
 export default function Footer() {
   return (
     <footer className="px-4 py-14 md:px-8">
@@ -14,7 +17,9 @@ export default function Footer() {
         >
           Policies
         </Link>
-        <p className="text-muted text-xs uppercase tracking-[0.2em]">© 2026 SRUF. All rights reserved.</p>
+        <p className="text-muted text-xs uppercase tracking-[0.2em]">
+          © {BRAND_START_YEAR} SRUF. All rights reserved.
+        </p>
       </div>
     </footer>
   );

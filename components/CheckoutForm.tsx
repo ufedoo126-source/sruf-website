@@ -24,12 +24,17 @@ export default function CheckoutForm({ lines, currency, totalNGN, onClose }: Pro
   const [city, setCity] = useState("");
   const [country, setCountry] = useState("Nigeria");
   const [note, setNote] = useState("");
+  const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (!accepted) {
+      setError("Please tick the box to accept our policies before paying.");
+      return;
+    }
     setBusy(true);
     try {
       const res = await fetch("/api/checkout", {
@@ -45,6 +50,7 @@ export default function CheckoutForm({ lines, currency, totalNGN, onClose }: Pro
           city,
           country,
           note,
+          acceptedTerms: accepted,
         }),
       });
       const data = await res.json();
@@ -70,7 +76,8 @@ export default function CheckoutForm({ lines, currency, totalNGN, onClose }: Pro
           {lines.map((l) => (
             <li key={l.key} className="flex justify-between gap-4 border-b border-line p-3">
               <span>
-                {l.product.name} · {l.size}{l.color ? ` · ${l.color}` : ""} × {l.qty}
+                {l.product.name} · {l.size}
+                {l.color ? ` · ${l.color}` : ""} × {l.qty}
               </span>
               <span>{formatPrice(l.product.price_ngn * l.qty, currency)}</span>
             </li>
@@ -165,9 +172,30 @@ export default function CheckoutForm({ lines, currency, totalNGN, onClose }: Pro
             <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} className={inputClass} />
           </div>
 
+          <label className="flex cursor-pointer items-start gap-3 border border-line p-3 text-sm">
+            <input
+              type="checkbox"
+              checked={accepted}
+              onChange={(e) => setAccepted(e.target.checked)}
+              className="mt-1 h-4 w-4 shrink-0"
+            />
+            <span>
+              I have read and agree to the{" "}
+              <a
+                href="/policies"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-brand-light underline"
+              >
+                delivery, returns and privacy policies
+              </a>
+              .
+            </span>
+          </label>
+
           {error && <p className="text-sm text-red-400">{error}</p>}
 
-          <button type="submit" disabled={busy} className="btn-primary w-full">
+          <button type="submit" disabled={busy || !accepted} className="btn-primary w-full">
             {busy ? "Taking you to payment…" : `Pay ${formatPrice(totalNGN, "NGN")} with Paystack`}
           </button>
           <p className="text-muted text-center text-xs">Payments are processed in naira (₦).</p>
